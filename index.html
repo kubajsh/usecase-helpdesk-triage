@@ -1,0 +1,250 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRC Incident Assigner</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 700px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 120px;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #results {
+            margin-top: 2rem;
+            display: none;
+        }
+        #loading {
+            text-align: center;
+            display: none;
+            color: #555;
+        }
+        .result-main {
+            background-color: #e7f3ff;
+            border-left: 5px solid #007bff;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+        .result-main strong {
+            font-weight: 600;
+        }
+        h3 {
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .visual-path-list {
+            list-style: none;
+            padding: 0;
+        }
+        .visual-path-item {
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 4px;
+        }
+        .visual-path-item p {
+            margin: 0 0 0.5rem 0;
+        }
+        .visual-path-item .ticket-id {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .visual-path-item .score {
+            font-style: italic;
+            color: #28a745;
+        }
+        .timeline {
+            list-style-type: none;
+            padding-left: 20px;
+            position: relative;
+        }
+        .timeline:before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #ddd;
+        }
+        .timeline-item {
+            margin-bottom: 20px;
+            position: relative;
+            padding-left: 30px;
+        }
+        .timeline-marker {
+            position: absolute;
+            left: 12px;
+            top: 5px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #007bff;
+            border: 2px solid #fff;
+        }
+        .timeline-content {
+            background-color: #f9f9f9;
+            padding: 10px 15px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+        }
+        .timeline-content .stage {
+            font-weight: bold;
+            margin: 0 0 5px 0;
+        }
+        .timeline-content .group, .timeline-content .time {
+            font-size: 0.9em;
+            color: #555;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GRC Incident Assigner</h1>
+        <form id="assign-form">
+            <textarea id="description" placeholder="Enter the incident description here..." required></textarea>
+            <button type="submit">Submit</button>
+        </form>
+        <div id="loading">Loading...</div>
+        <div id="results">
+            <div class="result-main">
+                Assigning ticket to: <strong id="predicted-group"></strong>
+            </div>
+            <h3>Justification (Based on similar tickets):</h3>
+            <div id="visual-path-container"></div>
+            <h3>Past Ticket Lifecycle</h3>
+            <div id="visual-flow-container"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('assign-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const description = document.getElementById('description').value;
+            const resultsDiv = document.getElementById('results');
+            const loadingDiv = document.getElementById('loading');
+            const submitButton = this.querySelector('button');
+
+            resultsDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+            submitButton.disabled = true;
+
+            try {
+                const response = await fetch('/assign', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ description: description })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                document.getElementById('predicted-group').textContent = data.predicted_group;
+                
+                const visualPathContainer = document.getElementById('visual-path-container');
+                visualPathContainer.innerHTML = ''; // Clear previous results
+                
+                const ol = document.createElement('ol');
+                ol.className = 'visual-path-list';
+
+                data.visual_path.forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'visual-path-item';
+                    li.innerHTML = `
+                        <p><span class="ticket-id">${item.ticket_id}</span></p>
+                        <p>${item.description}</p>
+                        <p><span class="score">Similarity Score: ${item.similarity_score}</span></p>
+                    `;
+                    ol.appendChild(li);
+                });
+                visualPathContainer.appendChild(ol);
+
+                const visualFlowContainer = document.getElementById('visual-flow-container');
+                visualFlowContainer.innerHTML = '';
+                const flowUl = document.createElement('ul');
+                flowUl.className = 'timeline';
+                data.visual_flow.forEach(item => {
+                    const flowLi = document.createElement('li');
+                    flowLi.className = 'timeline-item';
+                    flowLi.innerHTML = `
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <p class="stage">${item.stage}</p>
+                            <p class="group">Group: ${item.group}</p>
+                            <p class="time">Time Elapsed: ${item.time_spent}</p>
+                        </div>
+                    `;
+                    flowUl.appendChild(flowLi);
+                });
+                visualFlowContainer.appendChild(flowUl);
+
+                resultsDiv.style.display = 'block';
+
+            } catch (error) {
+                console.error("Error fetching assignment:", error);
+                alert("An error occurred. Please check the console for details.");
+            } finally {
+                loadingDiv.style.display = 'none';
+                submitButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

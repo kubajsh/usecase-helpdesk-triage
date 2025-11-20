@@ -1,0 +1,1 @@
+This project is a GRC (Governance, Risk, and Compliance) Incident Assignment tool. It uses a Python Flask backend to predict the appropriate resolver group for a given incident description based on a hardcoded knowledge base of past incidents. The frontend is a simple HTML page with JavaScript to interact with the backend.
